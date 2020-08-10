@@ -1,0 +1,54 @@
+id: custom-salesforce-oauth-token-injector-policy
+name: custom-salesforce-oauth-token-injector-policy
+description: Custom Salesforce Oauth Token Injector Policy
+category: Custom
+type: custom
+resourceLevelSupported: true
+encryptionSupported: false
+standalone: true
+requiredCharacteristics: []
+providedCharacteristics: []
+configuration: 
+
+- propertyName: sfUsername
+  name: Salesforce Username
+  description: Your Salesforce.com username usually an email id.
+  type: string
+  optional: false
+  sensitive: false
+  allowMultiple: false
+
+- propertyName: sfPassword
+  name: Salesforce Password
+  description: Your Salesforce.com password.
+  type: string
+  optional: false
+  sensitive: true
+  allowMultiple: false
+  
+- propertyName: sfClientId
+  name: Connected App Client Id
+  description: Your Salesforce.com connected app Client id.
+  type: string
+  optional: false
+  sensitive: true
+  allowMultiple: false
+
+- propertyName: sfClientSecret
+  name: Connected App Client Secret
+  description: Your Salesforce.com connected app Client secret.
+  type: string
+  optional: false
+  sensitive: true
+  allowMultiple: false
+
+- propertyName: expiryTime
+  name: Expiry Time (minutes)
+  description: Expiry time of the token (Default 15 minutes).
+  type: int
+  minimumValue: 1 
+  maximumValue: 2147483647
+  optional: false
+  sensitive: false
+  defaultValue: 15
+  allowMultiple: false

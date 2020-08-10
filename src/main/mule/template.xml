@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:http-policy="http://www.mulesoft.org/schema/mule/http-policy"
+	xmlns:http-transform="http://www.mulesoft.org/schema/mule/http-policy-transform"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core
+http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http
+http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/http-policy
+http://www.mulesoft.org/schema/mule/http-policy/current/mule-http-policy.xsd
+http://www.mulesoft.org/schema/mule/http-policy-transform
+http://www.mulesoft.org/schema/mule/http-policy-transform/current/mule-http-policy-transform.xsd
+http://www.mulesoft.org/schema/mule/os
+http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/ee/core
+http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+	<http:request-config name="HTTP_Request_configuration">
+		<http:request-connection protocol="HTTPS" host="login.salesforce.com" port="443" />
+	</http:request-config>
+	
+	<os:object-store name="Salesforce_Token_Object_Store"
+		persistent="true" />
+
+	<http-policy:proxy
+		name="{{{policyId}}}-custom-policy">
+
+		<http-policy:operation
+			propagateMessageTransformations="true">
+
+			<logger level="INFO" message="Custom policy injecting Header" />
+
+			<try>
+				<os:retrieve key="#['Salesforce_Token_Profile']"
+					objectStore="Salesforce_Token_Object_Store" target="sf_token" />
+				<set-variable value="#[(now() as Number)*1000]"
+					variableName="epochTime" />
+				<logger level="INFO" message="#[vars.sf_token]" />
+				<choice>
+					<when
+						expression="#[(vars.epochTime as Number - vars.sf_token.issued_at as Number) &gt; ({{{expiryTime}}}*60 - 10)*1000]">
+						<logger level="INFO"
+							message="#[output application/java
+---
+'Token expired refreshing token.. Issued Since: ' ++ (vars.epochTime as Number - vars.sf_token.issued_at as Number) as String ++ ' milliseconds.']" />
+						<http:request method="POST"
+							config-ref="HTTP_Request_configuration"
+							path="/services/oauth2/token" target="sf_token">
+							<http:body><![CDATA[#[output application/java
+import * from dw::core::URL
+---
+encodeURI("username=" ++ "{{{sfUsername}}}" 
+++ "&password=" ++ "{{{sfPassword}}}"
+++ "&grant_type=password&client_id=" 
+++ "{{{sfClientId}}}"
+++ "&client_secret=" ++ "{{{sfClientSecret}}}")]]]></http:body>
+							<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/x-www-form-urlencoded"
+}]]]></http:headers>
+						</http:request>
+						<os:store key="#['Salesforce_Token_Profile']"
+							objectStore="Salesforce_Token_Object_Store">
+							<os:value><![CDATA[#[vars.sf_token]]]></os:value>
+						</os:store>
+					</when>
+					<otherwise>
+						<logger level="INFO"
+							message="#[output application/java
+---
+'Existing Token is Valid..Issued Since: ' ++ (vars.epochTime as Number - vars.sf_token.issued_at as Number) as String ++ ' milliseconds.']" />
+					</otherwise>
+				</choice>
+				<error-handler>
+					<on-error-continue enableNotifications="true"
+						logException="true" type="OS:KEY_NOT_FOUND">
+						<http:request method="POST"
+							config-ref="HTTP_Request_configuration"
+							path="/services/oauth2/token" target="sf_token">
+							<http:body><![CDATA[#[output application/java
+import * from dw::core::URL
+---
+encodeURI("username=" ++ "{{{sfUsername}}}" 
+++ "&password=" ++ "{{{sfPassword}}}"
+++ "&grant_type=password&client_id=" 
+++ "{{{sfClientId}}}"
+++ "&client_secret=" ++ "{{{sfClientSecret}}}")]]]></http:body>
+							<http:headers><![CDATA[#[output application/java
+---
+{
+	"Content-Type" : "application/x-www-form-urlencoded"
+}]]]></http:headers>
+						</http:request>
+						<os:store key="#['Salesforce_Token_Profile']"
+							objectStore="Salesforce_Token_Object_Store">
+							<os:value><![CDATA[#[vars.sf_token]]]></os:value>
+						</os:store>
+					</on-error-continue>
+				</error-handler>
+			</try>
+
+			<http-transform:add-request-headers>
+				<http-transform:headers>#[
+					{
+					'Authorization': 'Bearer ' ++
+					(vars.sf_token.access_token default 'Not Found')
+					}
+					]
+				</http-transform:headers>
+			</http-transform:add-request-headers>
+
+
+			<http-policy:execute-next />
+
+			<logger level="INFO"
+				message="Custom policy after response received" />
+
+		</http-policy:operation>
+
+	</http-policy:proxy>
+</mule>
